@@ -41,3 +41,14 @@
 Настройки сохраняются автоматически в `~/.xbox_launcher.json`.
 
 Скачанный Xenia требует Visual C++ Redistributable: https://aka.ms/vs/17/release/vc_redist.x64.exe
+
+# SeriesCore — эксперимент с Xbox Series X|S
+
+В каталоге [`seriescore/`](seriescore/README.md) находится пре-альфа каркас
+открытого проекта по эмуляции Xbox Series X|S: честная архитектурная
+документация, дорожная карта и CLI (`seriescore.py`). Эмулятора Series X|S
+не существует ни в одном открытом проекте — здесь только фундамент, игры не запускаются.
+
+Легальный путь играть в игры Series X|S на ПК — Microsoft Store / приложение
+Xbox (Xbox Play Anywhere, Game Pass): это «официальная технология Series X|S
+on PC».
