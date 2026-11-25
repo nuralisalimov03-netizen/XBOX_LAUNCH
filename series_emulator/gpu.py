@@ -1,12 +1,13 @@
 """series_emulator.gpu — софтверный растеризатор в окне RDNA-памяти.
 
-Заглушка полноценного RDNA 2: сейчас это framebuffer RGBA + утилиты
-clear/triangle, пригодные для тестов и отладки пайплайна.
+Заглушка полноценного RDNA 2: framebuffer RGBA, треугольники/квады,
+HUD-текст через font3x5, экспорт PPM.
 """
 from __future__ import annotations
 
 import struct
 
+from .font3x5 import FONT
 from .memory import Memory, REGION_GPU
 
 
@@ -74,3 +75,35 @@ class GPU:
                 values.extend((str(r), str(g), str(b)))
             rows.append(" ".join(values))
         return ("\n".join(rows) + "\n").encode("ascii")
+
+    def raster_quad(self, x0, y0, x1, y1, color=(255, 255, 255, 255)):
+        """Прямоугольник (x0,y0)-(x1,y1) включительно из двух треугольников."""
+        a = self.raster_triangle((x0, y0), (x1, y0), (x1, y1), color=color)
+        b = self.raster_triangle((x0, y0), (x1, y1), (x0, y1), color=color)
+        return a + b
+
+    def draw_rect(self, x, y, w, h, color=(255, 255, 255, 255)):
+        """Прямоугольник шириной w и высотой h, пиксели (x..x+w-1, y..y+h-1)."""
+        drawn = 0
+        for yy in range(y, y + h):
+            for xx in range(x, x + w):
+                self.put_pixel(xx, yy, *color)
+                drawn += 1
+        return drawn
+
+    def draw_text(self, text, x, y, color=(255, 255, 255, 255), scale=1):
+        """Рисует строку шрифтом font3x5. char advance = 4*scale."""
+        drawn = 0
+        cx = x
+        for ch in text:
+            glyph = FONT.get(ch.upper(), FONT[" "])
+            for ry, row in enumerate(glyph):
+                for rx, bit in enumerate(row):
+                    if bit == "1":
+                        for sy in range(scale):
+                            for sx in range(scale):
+                                self.put_pixel(cx + rx * scale + sx,
+                                               y + ry * scale + sy, *color)
+                                drawn += 1
+            cx += 4 * scale
+        return drawn

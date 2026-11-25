@@ -78,10 +78,15 @@ def main(argv=None) -> int:
     parser.add_argument("--boot-ppm", metavar="PATH",
                         help="сохранить загрузочный кадр в PPM")
     parser.add_argument("--status", action="store_true")
+    parser.add_argument("--gui", action="store_true",
+                        help="открыть окно с демо-картриджем (Tkinter)")
     args = parser.parse_args(argv)
 
     if args.selftest:
         return selftest()
+    if args.gui:
+        from .frontend import run_gui
+        return run_gui()
     if args.boot_ppm:
         return dump_boot_ppm(args.boot_ppm)
     if args.status:

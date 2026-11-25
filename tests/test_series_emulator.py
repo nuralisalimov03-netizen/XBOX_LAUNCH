@@ -15,6 +15,9 @@ from series_emulator.input import InputManager
 from series_emulator.kernel import Kernel
 from series_emulator.cpu import StubCPU
 from series_emulator.console import SeriesConsole, boot_demo_console
+from series_emulator.rom_demo import DemoROM, BG_COLOR, PLAYER_COLOR
+from series_emulator.font3x5 import FONT
+from series_emulator.frontend import _rgb_bytes
 
 
 class MemoryTests(unittest.TestCase):
@@ -137,6 +140,83 @@ class ApuTests(unittest.TestCase):
         apu = APU()
         self.assertEqual(apu.main.submit([0.5, -0.5]), 2)
         self.assertEqual(apu.main.mix(1), [0.5, -0.5])
+
+
+class QuadTextTests(unittest.TestCase):
+    def setUp(self):
+        self.gpu = GPU(Memory(size_bytes=64 * 1024 * 1024),
+                       width=64, height=48)
+
+    def test_draw_rect(self):
+        self.gpu.clear(0, 0, 0)
+        self.gpu.draw_rect(2, 2, 5, 4, (255, 255, 255, 255))
+        self.assertEqual(self.gpu.get_pixel(2, 2), (255, 255, 255, 255))
+        self.assertEqual(self.gpu.get_pixel(6, 5), (255, 255, 255, 255))
+
+    def test_draw_text_glyph_pixels(self):
+        self.gpu.clear(0, 0, 0)
+        self.gpu.draw_text("S", 1, 1, (255, 255, 255, 255))
+        rotto = (255, 255, 255, 255)
+        self.assertEqual(self.gpu.get_pixel(1, 1), rotto)
+        self.assertEqual(self.gpu.get_pixel(2, 1), rotto)
+
+    def test_unknown_char_falls_back_to_space(self):
+        self.gpu.clear(0, 0, 0)
+        self.gpu.draw_text("~", 0, 0, (255, 255, 255, 255))
+        self.assertEqual(self.gpu.get_pixel(0, 0), (0, 0, 0, 255))
+
+
+class DemoRomTests(unittest.TestCase):
+    def test_movement_uses_stick(self):
+        rom = DemoROM(seed=1)
+        console = SeriesConsole(width=rom.WIDTH, height=rom.HEIGHT)
+        console.boot()
+        pad = console.input.controller(0)
+        pad.set_axis("ls_x", 1.0)
+        x0 = rom.px
+        rom.update(0.5, console.input)
+        self.assertAlmostEqual(rom.px - x0, rom.SPEED * 0.5)
+
+    def test_clamped_to_borders(self):
+        rom = DemoROM(seed=1)
+        console = SeriesConsole(width=rom.WIDTH, height=rom.HEIGHT)
+        console.boot()
+        pad = console.input.controller(0)
+        pad.set_axis("ls_x", 1.0)
+        for _ in range(10):
+            rom.update(1.0, console.input)
+        self.assertLessEqual(rom.px, rom.WIDTH - rom.PLAYER_SIZE - 1)
+
+    def test_collision_increments_score(self):
+        rom = DemoROM(seed=2)
+        console = SeriesConsole(width=rom.WIDTH, height=rom.HEIGHT)
+        console.boot()
+        rom.px, rom.py = rom.tx, rom.ty
+        rom.update(0.0, console.input)
+        self.assertEqual(rom.score, 1)
+        self.assertNotEqual((rom.tx, rom.ty), (rom.px, rom.py))
+
+    def test_draw_renders_into_framebuffer(self):
+        rom = DemoROM(seed=3)
+        console = SeriesConsole(width=rom.WIDTH, height=rom.HEIGHT)
+        console.boot()
+        rom.draw(console.gpu)
+        self.assertEqual(console.gpu.get_pixel(0, 0)[0], BG_COLOR[0])
+
+        center = console.gpu.get_pixel(int(rom.px) + rom.PLAYER_SIZE // 2,
+                                       int(rom.py) + rom.PLAYER_SIZE // 2)
+        self.assertEqual(center, PLAYER_COLOR)
+
+
+class FrontendConversionTests(unittest.TestCase):
+    def test_rgb_bytes_is_valid_ppm(self):
+        gpu = GPU(Memory(size_bytes=64 * 1024 * 1024), width=8, height=6)
+        gpu.clear(1, 2, 3)
+        blob = _rgb_bytes(gpu)
+        self.assertTrue(blob.startswith(b"P6\n8 6\n255\n"))
+        self.assertEqual(len(blob), 11 + 8 * 6 * 3)
+        r, g, b = blob[11:14]
+        self.assertEqual((r, g, b), (1, 2, 3))
 
 
 if __name__ == "__main__":

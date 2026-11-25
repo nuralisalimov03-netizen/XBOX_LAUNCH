@@ -16,7 +16,22 @@
 | `input.py` | работает | состояние геймпада (оси + кнопки), клиппинг осей |
 | `kernel.py` | работает | таблица объектов, аллокатор ядра, системные вызовы, boot-лог |
 | `console.py` | работает | сборка консоли, boot() → отчёт о запуске, run_frame() |
-| `cli.py` | работает | `--selftest`, `--boot-ppm <out.ppm>`, `--status` |
+| `cli.py` | работает | `--selftest`, `--boot-ppm <out.ppm>`, `--status`, `--gui` |
+| `font3x5.py` | работает | пиксельный шрифт 3x5 для HUD |
+| `rom_demo.py` | работает | демо-картридж «собери кубы» (управление осями геймпада) |
+| `frontend.py` | работает | оконный фронтенд Tkinter: framebuffer в окне ПК, клавиатура → геймпад, 30 FPS |
+
+## Запуск на ПК прямо сейчас
+
+```bat
+run_demo.bat
+```
+
+откроет окно 480x270 с демо-игрой: стрелки/WASD — стик, Z — кнопка A,
+X — кнопка B, Esc — выход. Windows/Linux/macOS, только стандартная библиотека.
+Упаковка в exe (по желанию): `pip install pyinstaller && pyinstaller --onefile
+--collect-submodules series_emulator -n SeriesDemo -m series_emulator --gui`.
+
 
 ## Как этим пользоваться агентам
 
