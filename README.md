@@ -43,6 +43,20 @@
 
 Настройки сохраняются автоматически в `~/.xbox_launcher.json`.
 
+## Запуск без графического интерфейса (CLI)
+
+GUI требует Tkinter (в Debian/Ubuntu — пакет `python3-tk`). Без него работает
+консольный режим:
+
+```bash
+python xbox_launch.py --check                    # диагностика окружения
+python xbox_launch.py --launch game.iso          # авто-выбор эмулятора и запуск
+python xbox_launch.py --launch game.xbe --emupath C:\xemu\xemu.exe --save
+```
+
+`--emu auto` (по умолчанию) сам определяет эмулятор по типу файла; `--save`
+запоминает игру и эмулятор в конфиге.
+
 Скачанный Xenia требует Visual C++ Redistributable: https://aka.ms/vs/17/release/vc_redist.x64.exe
 
 # SeriesCore — эксперимент с Xbox Series X|S

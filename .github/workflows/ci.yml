@@ -17,6 +17,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Compile check
-        run: python -m compileall -q xbox_launcher.py seriescore
+        run: python -m compileall -q xbox_launcher.py xbox_core.py xbox_launch.py seriescore tests
       - name: Unit tests (SeriesCore)
         run: python -m unittest discover -s seriescore -p "test_*.py" -v
+      - name: Unit tests (launcher core)
+        run: python -m unittest discover -s tests -p "test_*.py" -v
