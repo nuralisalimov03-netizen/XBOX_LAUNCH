@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
 import argparse
 import hashlib
+import importlib.util
 import json
 import math
 import os
 import sys
 
 PROJECT = "SeriesCore"
-VERSION = "0.3.0"
+VERSION = "0.4.0"
+
+_here = os.path.dirname(os.path.abspath(__file__))
+_pe_spec = importlib.util.spec_from_file_location(
+    "pe_parser", os.path.join(_here, "pe_parser.py")
+)
+pe_parser = importlib.util.module_from_spec(_pe_spec)
+_pe_spec.loader.exec_module(pe_parser)
 
 MODULES = [
     ("containers", "Чтение образов XVD", "в разработке"),
@@ -187,6 +195,29 @@ def cmd_entropy(args):
     return 0
 
 
+def cmd_pe_info(args):
+    info, err = pe_parser.parse_pe_file(args.file)
+    if err:
+        print("Ошибка: %s" % err)
+        return 1
+    if args.json:
+        print(json.dumps(info, ensure_ascii=False, indent=2))
+        return 0
+    print("Файл: %s" % args.file)
+    print("PE-заголовок: смещение 0x%X, %s" % (info["pe_offset"], "PE32+" if info["pe32plus"] else "PE32"))
+    print("Машина: %s" % info["machine_name"])
+    print("Подсистема: %s" % info["subsystem_name"])
+    print("Точка входа: RVA 0x%X (VA 0x%X)" % (info["entry_point"], info["image_base"] + info["entry_point"]))
+    print("Образ: 0x%X..0x%X" % (info["image_base"], info["image_base"] + info["image_size"]))
+    print("Секций: %d" % len(info["sections"]))
+    for s in info["sections"]:
+        print(
+            "  %-8s VA 0x%-8X raw 0x%-8X size %-8d %s"
+            % (s["name"], s["virtual_address"], s["raw_offset"], s["raw_size"], s["flags"])
+        )
+    return 0
+
+
 def cmd_status(_):
     print("%s %s — пре-альфа, игры не запускаются" % (PROJECT, VERSION))
     print()
@@ -317,6 +348,9 @@ def main():
         default=DEFAULT_BLOCK,
         help="размер блока в байтах (по умолчанию 1 МБ)",
     )
+    p_pe = sub.add_parser("pe-info", help="Разбор PE-образа (секции, точка входа)")
+    p_pe.add_argument("file")
+    p_pe.add_argument("--json", action="store_true", help="Вывод в формате JSON")
     args = parser.parse_args()
 
     if args.command == "status":
@@ -331,6 +365,8 @@ def main():
         return cmd_capabilities(args)
     if args.command == "entropy":
         return cmd_entropy(args)
+    if args.command == "pe-info":
+        return cmd_pe_info(args)
     return 2
 
 

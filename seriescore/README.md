@@ -12,8 +12,13 @@ python3 seriescore.py xvd-info F.xvd --json   # то же в формате JSON
 python3 seriescore.py scan F.xvd       # поиск известных подписей во всём образе
 python3 seriescore.py capabilities  # матрица поддержки Xbox Series X|S
 python3 seriescore.py entropy F.xvd  # карта энтропии: где шифрование, где структура
+python3 seriescore.py pe-info game.exe  # разбор PE-образа: секции, точка входа
 python3 seriescore.py selftest      # внутренняя проверка
 ```
+
+Загрузчик образов — первый шаг ядра (Фаза 2): `pe_parser.py` разбирает
+PE32/PE32+ (машина, подсистема, точка входа, таблица секций). Именно так
+эмулятор начинает «видеть» исполняемые образы игр.
 
 Тесты: `python -m unittest discover -s seriescore -p "test_*.py" -v`
 CI прогоняет компиляцию и тесты на Python 3.11 / 3.12 / 3.13.
