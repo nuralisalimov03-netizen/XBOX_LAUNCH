@@ -20,6 +20,9 @@ EMU_ARGS = {
     "xemu": ["-dvd_path"],
 }
 
+GAME_EXTENSIONS = (".iso", ".cci", ".xex", ".xbe")
+MAX_LIBRARY = 5000
+
 
 def load_config():
     if os.path.exists(CONFIG_PATH):
@@ -73,6 +76,46 @@ def guess_emu(game_path):
             return "xemu"
         return "xenia"
     return "xenia"
+
+
+def scan_library(roots):
+    entries = []
+    for root in roots:
+        if os.path.isfile(root):
+            entries.append(os.path.abspath(root))
+            continue
+        if not os.path.isdir(root):
+            continue
+        for dirpath, dirnames, filenames in os.walk(root):
+            for fn in filenames:
+                if (
+                    fn.lower() == "default.xbe"
+                    or os.path.splitext(fn)[1].lower() in GAME_EXTENSIONS
+                ):
+                    entries.append(os.path.join(dirpath, fn))
+            if len(entries) >= MAX_LIBRARY:
+                break
+        if len(entries) >= MAX_LIBRARY:
+            break
+    return sorted(set(entries))[:MAX_LIBRARY]
+
+
+def resolve_game(query, config):
+    if not query:
+        return [], "Указан пустой путь"
+    if os.path.isfile(query):
+        return [os.path.abspath(query)], None
+    if os.path.isdir(query):
+        return scan_library([query]), None
+    needle = query.lower()
+    matches = [
+        p
+        for p in config.get("library", [])
+        if needle in os.path.basename(p).lower()
+    ]
+    if not matches:
+        return [], "Не найдено в библиотеке: %s" % query
+    return matches, None
 
 
 def parse_start_apps(raw):

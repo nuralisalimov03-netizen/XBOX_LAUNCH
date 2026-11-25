@@ -57,6 +57,77 @@ class ResolveEmuTests(unittest.TestCase):
         self.assertEqual(xbox_core.resolve_emu_path("definitely-not-an-emu", {}), "")
 
 
+class ScanLibraryTests(unittest.TestCase):
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+
+    def make(self, rel, content=b"X"):
+        path = os.path.join(self.base, rel.replace("/", os.sep))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(content)
+        return path
+
+    def test_finds_games_recursively(self):
+        iso = self.make("racing/racing.iso")
+        xex = self.make("shooters/x.xex")
+        xbe = self.make("classic/default.xbe")
+        self.make("docs/readme.txt")
+        games = xbox_core.scan_library([self.base])
+        names = [os.path.basename(p) for p in games]
+        self.assertIn("racing.iso", names)
+        self.assertIn("x.xex", names)
+        self.assertIn("default.xbe", names)
+        self.assertNotIn("readme.txt", names)
+        self.assertIn(iso, games)
+        self.assertEqual(len(games), 3)
+
+    def test_accepts_single_file_root(self):
+        path = self.make("one.cci")
+        self.assertEqual(xbox_core.scan_library([path]), [path])
+
+    def test_missing_root_ignored(self):
+        result = xbox_core.scan_library([os.path.join(self.base, "nope")])
+        self.assertEqual(result, [])
+
+    def test_deduplicates(self):
+        path = self.make("dup.iso")
+        games = xbox_core.scan_library([self.base, self.base])
+        self.assertEqual(games, [path])
+
+
+class ResolveGameTests(unittest.TestCase):
+    def test_direct_file_path(self):
+        fd, path = tempfile.mkstemp(suffix=".iso")
+        os.close(fd)
+        self.addCleanup(os.unlink, path)
+        matches, err = xbox_core.resolve_game(path, {})
+        self.assertIsNone(err)
+        self.assertEqual(matches, [os.path.abspath(path)])
+
+    def test_library_name_match(self):
+        cfg = {"library": ["/games/Halo/halo.iso", "/games/Forza/forza.iso"]}
+        matches, err = xbox_core.resolve_game("halo", cfg)
+        self.assertIsNone(err)
+        self.assertEqual(matches, ["/games/Halo/halo.iso"])
+
+    def test_library_multiple_matches(self):
+        cfg = {"library": ["/a/halo1.iso", "/b/halo2.iso"]}
+        matches, err = xbox_core.resolve_game("halo", cfg)
+        self.assertIsNone(err)
+        self.assertEqual(len(matches), 2)
+
+    def test_not_found(self):
+        matches, err = xbox_core.resolve_game("unknown-game", {"library": []})
+        self.assertEqual(matches, [])
+        self.assertIn("Не найдено", err)
+
+    def test_empty_query(self):
+        matches, err = xbox_core.resolve_game("", {})
+        self.assertEqual(matches, [])
+        self.assertTrue(err)
+
+
 class ParseStartAppsTests(unittest.TestCase):
     def test_filters_uwp_only(self):
         raw = "\n".join(

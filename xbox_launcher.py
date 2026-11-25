@@ -14,6 +14,7 @@ from xbox_core import (
     load_config,
     parse_start_apps,
     save_config as _save_config,
+    scan_library,
 )
 
 try:
@@ -108,6 +109,89 @@ class StoreAppDialog(tk.Toplevel):
             messagebox.showerror("Ошибка", "Не удалось запустить:\n%s" % e, parent=self)
 
 
+class LibraryDialog(tk.Toplevel):
+    def __init__(self, master):
+        super().__init__(master)
+        self.title("Библиотека игр Xbox")
+        self.geometry("640x440")
+        self.games = []
+        self.visible = []
+        bar = ttk.Frame(self)
+        bar.pack(fill="x", padx=8, pady=8)
+        ttk.Button(bar, text="Сканировать папку…", command=self._pick_folder).pack(
+            side="left"
+        )
+        self.search_var = tk.StringVar()
+        search = ttk.Entry(bar, textvariable=self.search_var)
+        search.pack(side="left", fill="x", expand=True, padx=(6, 0))
+        search.bind("<KeyRelease>", lambda e: self._refresh())
+        self.listbox = tk.Listbox(self, font=("Consolas", 9))
+        self.listbox.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        self.listbox.bind("<Double-Button-1>", lambda e: self._launch_selected())
+        bottom = ttk.Frame(self)
+        bottom.pack(fill="x", padx=8, pady=(0, 8))
+        ttk.Button(
+            bottom, text="Запустить выбранную", command=self._launch_selected
+        ).pack(side="left")
+        self.status_var = tk.StringVar(value="Библиотека пуста")
+        ttk.Label(self, textvariable=self.status_var, foreground="gray").pack(
+            anchor="w", padx=8, pady=(0, 8)
+        )
+        roots = master.config_data.get("library_roots", [])
+        if roots:
+            self._scan(list(roots))
+
+    def _pick_folder(self):
+        folder = filedialog.askdirectory(title="Папка с играми Xbox")
+        if not folder:
+            return
+        roots = set(self.master.config_data.get("library_roots", []))
+        roots.add(folder)
+        self.master.config_data["library_roots"] = sorted(roots)
+        save_config(self.master.config_data)
+        self._scan(sorted(roots))
+
+    def _scan(self, roots):
+        self.status_var.set("Сканирование…")
+        threading.Thread(
+            target=lambda: self.after(0, lambda: self._apply(scan_library(roots))),
+            daemon=True,
+        ).start()
+
+    def _apply(self, games):
+        self.games = games
+        self.master.config_data["library"] = games
+        save_config(self.master.config_data)
+        self.status_var.set(
+            "Игр найдено: %d. Двойной клик — запуск" % len(games)
+        )
+        self._refresh()
+
+    def _refresh(self):
+        query = self.search_var.get().lower()
+        self.listbox.delete(0, "end")
+        self.visible = [
+            p for p in self.games if query in os.path.basename(p).lower()
+        ]
+        for p in self.visible:
+            self.listbox.insert(
+                "end", "%s  —  %s" % (os.path.basename(p), os.path.dirname(p))
+            )
+
+    def _launch_selected(self):
+        selection = self.listbox.curselection()
+        if not selection:
+            return
+        path = self.visible[selection[0]]
+        self.master.game_var.set(path)
+        emu = guess_emu(path)
+        if emu != self.master.emu_var.get():
+            self.master.emu_var.set(emu)
+            self.master._refresh_emu_path()
+        self.master.launch()
+        self.status_var.set("Запуск: %s" % os.path.basename(path))
+
+
 class XboxLauncher(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -167,6 +251,9 @@ class XboxLauncher(tk.Tk):
         self.recent_box.bind(
             "<<ComboboxSelected>>",
             lambda e: self.game_var.set(self.recent_box.get()),
+        )
+        ttk.Button(frame, text="Библиотека…", command=self._open_library).grid(
+            row=3, column=3, padx=(4, 0)
         )
 
         frame.columnconfigure(1, weight=1)
@@ -262,6 +349,9 @@ class XboxLauncher(tk.Tk):
 
     def _open_store(self):
         StoreAppDialog(self)
+
+    def _open_library(self):
+        LibraryDialog(self)
 
     def log_write(self, text):
         self.log.configure(state="normal")

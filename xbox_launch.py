@@ -14,7 +14,9 @@ from xbox_core import (
     guess_emu,
     load_config,
     resolve_emu_path,
+    resolve_game,
     save_config,
+    scan_library,
 )
 
 
@@ -39,14 +41,49 @@ def cmd_check(_):
         print("%s: %s" % (EMU_LABELS[emu], state))
 
     print("Конфиг: %s" % (CONFIG_PATH if os.path.exists(CONFIG_PATH) else "нет"))
+    lib = load_config().get("library", [])
+    print("Библиотека игр: %d" % len(lib))
+    return 0
+
+
+def cmd_scan(args):
+    config = load_config()
+    roots = sorted(set(config.get("library_roots", [])) | set(args.scan))
+    games = scan_library(roots)
+    config["library_roots"] = roots
+    config["library"] = games
+    err = save_config(config)
+    if err:
+        print("Предупреждение: не удалось сохранить настройки: %s" % err)
+    print("Найдено игр: %d (папок: %d)" % (len(games), len(roots)))
+    for path in games[:20]:
+        print("  %s" % os.path.basename(path))
+    if len(games) > 20:
+        print("  … и ещё %d" % (len(games) - 20))
     return 0
 
 
 def do_launch(args):
-    game = args.launch
-    if not os.path.isfile(game):
-        print("Ошибка: файл игры не найден: %s" % game)
+    query = args.launch
+    candidates, err = resolve_game(query, load_config())
+    if err:
+        print("Ошибка: %s" % err)
         return 1
+    if os.path.isdir(query):
+        if len(candidates) == 1:
+            game = candidates[0]
+        else:
+            print("В папке найдено %d игр — укажите конкретную:" % len(candidates))
+            for p in candidates[:20]:
+                print("  %s" % os.path.basename(p))
+            return 4
+    elif len(candidates) != 1:
+        print("Найдено %d совпадений — уточните имя:" % len(candidates))
+        for p in candidates[:20]:
+            print("  %s" % os.path.basename(p))
+        return 4
+    else:
+        game = candidates[0]
     emu = args.emu
     if emu == "auto":
         emu = guess_emu(game)
@@ -88,7 +125,9 @@ def main():
     parser.add_argument("--check", action="store_true",
                         help="показать диагностику окружения")
     parser.add_argument("--launch", metavar="FILE",
-                        help="файл игры (ISO, XEX, XBE) для запуска")
+                        help="файл игры (ISO, XEX, XBE), папка с играми или имя из библиотеки")
+    parser.add_argument("--scan", metavar="DIR", action="append",
+                        help="добавить папку в библиотеку и просканировать")
     parser.add_argument("--emu", default="auto",
                         help="xenia, xemu или auto (по умолчанию auto)")
     parser.add_argument("--emupath", default="",
@@ -99,6 +138,8 @@ def main():
 
     if args.check:
         return cmd_check(args)
+    if args.scan:
+        return cmd_scan(args)
     if args.launch:
         return do_launch(args)
     parser.print_help()
