@@ -8,6 +8,8 @@
 ```bash
 python3 seriescore.py status        # состояние проекта и список модулей
 python3 seriescore.py xvd-info F.xvd   # базовая информация об образе XVD
+python3 seriescore.py xvd-info F.xvd --json   # то же в формате JSON
+python3 seriescore.py scan F.xvd       # поиск известных подписей во всём образе
 python3 seriescore.py selftest      # внутренняя проверка
 ```
 

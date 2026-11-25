@@ -53,6 +53,74 @@ class XvdInfoTests(unittest.TestCase):
         self.assertEqual(len(report["sha256_head"]), 64)
 
 
+class HumanSizeTests(unittest.TestCase):
+    def test_bytes(self):
+        self.assertEqual(seriescore.human_size(0), "0 Б")
+        self.assertEqual(seriescore.human_size(1023), "1023 Б")
+
+    def test_units(self):
+        self.assertEqual(seriescore.human_size(1024), "1.0 КБ")
+        self.assertEqual(seriescore.human_size(5 * 1024 * 1024), "5.0 МБ")
+        self.assertEqual(seriescore.human_size(3 * 1024 ** 3), "3.0 ГБ")
+
+
+class HexdumpTests(unittest.TestCase):
+    def test_format(self):
+        dump = seriescore.hexdump(b"XVD" + b"\x00" * 13 + b"A")
+        first = dump.splitlines()[0]
+        self.assertTrue(first.startswith("00000000  58 56 44 00"))
+        self.assertIn("|XVD", first)
+
+    def test_limit(self):
+        dump = seriescore.hexdump(bytes(range(256)), limit=16)
+        self.assertEqual(len(dump.splitlines()), 1)
+
+    def test_non_printable_shown_as_dot(self):
+        dump = seriescore.hexdump(b"\x00\xff")
+        self.assertIn("|..|", dump)
+
+
+class ScanTests(unittest.TestCase):
+    def write_tmp(self, data):
+        fd, path = tempfile.mkstemp(suffix=".img")
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        self.addCleanup(os.unlink, path)
+        return path
+
+    def test_finds_signatures_at_offsets(self):
+        path = self.write_tmp(
+            b"\x00" * 10
+            + b"CD001"
+            + b"\x00" * 1000
+            + b"MICROSOFT*XBOX*MEDIA"
+        )
+        hits, err = seriescore.scan_signatures(path)
+        self.assertIsNone(err)
+        self.assertEqual(len(hits), 2)
+        self.assertIn((10, "ISO9660"), hits)
+        self.assertIn((1015, "XDVDFS (файловая система Xbox)"), hits)
+
+    def test_no_signatures(self):
+        path = self.write_tmp(b"\x00" * 4096)
+        hits, err = seriescore.scan_signatures(path)
+        self.assertIsNone(err)
+        self.assertEqual(hits, [])
+
+    def test_missing_file(self):
+        hits, err = seriescore.scan_signatures(os.path.join(HERE, "no_such.bin"))
+        self.assertIsNone(hits)
+        self.assertIn("No such file", err)
+
+    def test_signature_across_chunk_boundary(self):
+        sig = b"MICROSOFT*XBOX*MEDIA"
+        data = b"A" * ((1 << 20) - 10) + sig
+        path = self.write_tmp(data)
+        hits, err = seriescore.scan_signatures(path, chunk_size=1 << 20)
+        self.assertIsNone(err)
+        self.assertIn(((1 << 20) - 10, "XDVDFS (файловая система Xbox)"), hits), hits
+
+
 class ModuleTableTests(unittest.TestCase):
     def test_all_modules_listed(self):
         names = [name for name, _, _ in seriescore.MODULES]

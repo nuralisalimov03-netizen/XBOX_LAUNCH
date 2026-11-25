@@ -230,24 +230,35 @@ class XboxLauncher(tk.Tk):
             row=2, column=3, padx=(4, 0)
         )
 
+        self.recent = self.config_data.get("recent_games", [])
+        ttk.Label(frame, text="Недавние:").grid(row=3, column=0, sticky="w")
+        self.recent_box = ttk.Combobox(
+            frame, values=self.recent, state="readonly", width=40
+        )
+        self.recent_box.grid(row=3, column=1, columnspan=2, sticky="we")
+        self.recent_box.bind(
+            "<<ComboboxSelected>>",
+            lambda e: self.game_var.set(self.recent_box.get()),
+        )
+
         frame.columnconfigure(1, weight=1)
         frame.columnconfigure(2, weight=1)
 
         self.launch_btn = ttk.Button(
             frame, text="Запустить игру", command=self.launch
         )
-        self.launch_btn.grid(row=3, column=1, sticky="we", pady=(10, 4))
+        self.launch_btn.grid(row=4, column=1, sticky="we", pady=(10, 4))
         self.stop_btn = ttk.Button(
             frame, text="Остановить", command=self.stop, state="disabled"
         )
-        self.stop_btn.grid(row=3, column=2, sticky="we", pady=(10, 4))
+        self.stop_btn.grid(row=4, column=2, sticky="we", pady=(10, 4))
         ttk.Button(frame, text="Store / Xbox app…", command=self._open_store).grid(
-            row=3, column=3, sticky="we", pady=(10, 4)
+            row=4, column=3, sticky="we", pady=(10, 4)
         )
 
         self.status_var = tk.StringVar(value="Готов к запуску")
         ttk.Label(frame, textvariable=self.status_var, foreground="gray").grid(
-            row=4, column=0, columnspan=4, sticky="w"
+            row=5, column=0, columnspan=4, sticky="w"
         )
 
         self.log = tk.Text(self, height=10, state="disabled", font=("Consolas", 9))
@@ -311,6 +322,14 @@ class XboxLauncher(tk.Tk):
         self.log.see("end")
         self.log.configure(state="disabled")
 
+    def _remember_recent(self, game_path):
+        if game_path in self.recent:
+            self.recent.remove(game_path)
+        self.recent.insert(0, game_path)
+        self.recent = self.recent[:8]
+        self.config_data["recent_games"] = list(self.recent)
+        self.recent_box.configure(values=self.recent)
+
     def launch(self):
         emu_path = self.emu_path_var.get().strip()
         game_path = self.game_var.get().strip()
@@ -333,6 +352,7 @@ class XboxLauncher(tk.Tk):
             args.append(game_path)
 
         self.config_data["last_game"] = game_path
+        self._remember_recent(game_path)
         self.config_data["emu"] = emu
         self.config_data.setdefault("emu_paths", {})[emu] = emu_path
         save_config(self.config_data)
