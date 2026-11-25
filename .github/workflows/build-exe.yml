@@ -1,0 +1,48 @@
+name: build-exe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["vibe/**"]
+    paths:
+      - "series_emulator/**"
+      - "xbox_series_launcher.py"
+      - "entry_demo.py"
+      - "entry_launcher.py"
+      - ".github/workflows/build-exe.yml"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pyinstaller
+
+      - name: Build SeriesDemo.exe
+        run: >
+          python -m PyInstaller --onefile --noconfirm --noconsole
+          --name SeriesDemo --collect-submodules series_emulator
+          entry_demo.py
+
+      - name: Build XboxSeriesLauncher.exe
+        run: >
+          python -m PyInstaller --onefile --noconfirm
+          --name XboxSeriesLauncher entry_launcher.py
+
+      - name: Upload SeriesDemo.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: SeriesDemo-exe
+          path: dist/SeriesDemo.exe
+
+      - name: Upload XboxSeriesLauncher.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: XboxSeriesLauncher-exe
+          path: dist/XboxSeriesLauncher.exe
