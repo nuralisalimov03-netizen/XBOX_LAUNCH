@@ -1,6 +1,20 @@
 # Xbox Launch
 
-Лаунчеры для запуска файлов игр Xbox на компьютере через существующие эмуляторы.
+Лаунчеры и каркас эмулятора Xbox для ПК.
+
+## Как запускать (быстро)
+
+| Что | Как |
+|---|---|
+| Демо эмулятора (окно с игрой) | `run_demo.bat` или `python -m series_emulator --gui` |
+| Дашборд-лаунчер (Xenia/xemu) | `launch_series.bat` или `python xbox_series_launcher.py` |
+| Простой лаунчер | `launch.bat` или `python xbox_launcher.py` |
+| Сборка всех .exe | `build_exe.bat` (нужен Python 3.8+, pyinstaller поставится сам) |
+
+После `build_exe.bat` в папке появятся **SeriesDemo.exe** (демо) и
+**XboxSeriesLauncher.exe** (лаунчер) — их можно запускать двойным кликом без Python.
+
+Управление в демо: стрелки/WASD — стик, Z — «A», X — «B», Esc — выход.
 
 ## Series Emulator (каркас эмулятора)
 
