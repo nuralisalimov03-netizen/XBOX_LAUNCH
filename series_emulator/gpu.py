@@ -113,6 +113,24 @@ class GPU:
                 drawn += self.draw_rect(x + w - 1 - t, y + 1 + t, 1, h - 2 - 2 * t, color)
         return drawn
 
+    def draw_circle(self, cx, cy, radius, color=(255, 255, 255, 255),
+                    fill=True, thickness=1):
+        """Окружность/диск (по расстоянию до центра)."""
+        drawn = 0
+        r = max(1, int(radius))
+        for y in range(max(0, cy - r), min(self.height, cy + r + 1)):
+            for x in range(max(0, cx - r), min(self.width, cx + r + 1)):
+                d2 = (x - cx) * (x - cx) + (y - cy) * (y - cy)
+                if fill:
+                    hit = d2 <= r * r
+                else:
+                    band = thickness - 1
+                    hit = (r - 1 - band) * (r - 1 - band) <= d2 <= r * r                         if r - 1 - band >= 0 else d2 <= r * r
+                if hit:
+                    self.put_pixel(x, y, *color)
+                    drawn += 1
+        return drawn
+
     def draw_text(self, text, x, y, color=(255, 255, 255, 255), scale=1):
         """Рисует строку шрифтом font3x5. char advance = 4*scale."""
         drawn = 0

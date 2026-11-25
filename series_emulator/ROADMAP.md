@@ -19,8 +19,9 @@
 | `console.py` | работает | сборка консоли, boot() → отчёт о запуске, run_frame() |
 | `cli.py` | работает | `--selftest`, `--boot-ppm <out.ppm>`, `--status`, `--gui` |
 | `font3x5.py` | работает | пиксельный шрифт 3x5 для HUD |
-| `rom_demo.py` | работает | демо-картридж «собери кубы» (управление осями геймпада) |
-| `frontend.py` | работает | оконный фронтенд Tkinter: framebuffer в окне ПК, клавиатура → геймпад, 30 FPS |
+| `rom_demo.py` | работает | демо-картридж «собери кубы»: boot-заставка (растущая сфера + кольцо + логотип), HUD SCORE/BEST, пауза, рестарт, рекорд через `saves.py`, хук `on_target_caught` |
+| `saves.py` | работает | персистентный рекорд в `~/.series_emulator_save.json` (JSON, слияние полей, безопасная загрузка битого файла) |
+| `frontend.py` | работает | оконный фронтенд Tkinter: framebuffer в окне ПК, клавиатура → геймпад, 30 FPS, blit-каскад (raw PPM → base64 → row-put), Space — пауза, R — рестарт, звуковой хук (winsound на Windows) |
 
 ## Запуск на ПК прямо сейчас
 
@@ -28,8 +29,10 @@
 run_demo.bat
 ```
 
-откроет окно 738x430 с демо-игрой (тёмный стиль Series, HUD, статус-бар): стрелки/WASD — стик, Z — кнопка A,
-X — кнопка B, Esc — выход. Windows/Linux/macOS, только стандартная библиотека.
+откроет окно 738x430 со стилем Series X/S: boot-заставка (зелёная сфера, расходящееся
+кольцо, логотип), тёмный HUD SCORE/BEST, статус-бар. Управление: стрелки/WASD — стик,
+Z — кнопка A, X — кнопка B, **Space — пауза, R — рестарт**, Esc — выход. Короче:
+Windows/Linux/macOS, только стандартная библиотека.
 Упаковка в exe (по желанию): `pip install pyinstaller && pyinstaller --onefile
 --collect-submodules series_emulator -n SeriesDemo -m series_emulator --gui`.
 

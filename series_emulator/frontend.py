@@ -6,8 +6,10 @@
 from __future__ import annotations
 
 import base64
+import sys
 import time
 
+from . import saves
 from .console import SeriesConsole
 from .rom_demo import DemoROM
 
@@ -46,7 +48,17 @@ def run_gui(rom=None, width=DemoROM.WIDTH, height=DemoROM.HEIGHT,
 
     console = SeriesConsole(width=width, height=height)
     console.boot()
-    rom = rom or DemoROM()
+    rom = rom or DemoROM(save_path=saves.DEFAULT_SAVE_PATH)
+
+    def play_sfx():
+        if sys.platform.startswith("win"):
+            try:
+                import winsound
+                winsound.Beep(880, 45)
+            except Exception:
+                pass
+
+    rom.on_target_caught = play_sfx
 
     root = tk.Tk()
     root.title("Xbox Series — Demo")
@@ -76,7 +88,8 @@ def run_gui(rom=None, width=DemoROM.WIDTH, height=DemoROM.HEIGHT,
     tk.Label(status_bar, textvariable=status_var, bg=PANEL, fg=MUTED,
              font=sub_font, anchor="w").pack(fill="x", padx=10, pady=6)
     help_font = tkfont.Font(family="Segoe UI", size=8)
-    tk.Label(root, text="стрелки/WASD — стик  •  Z — A  •  X — B  •  Esc — выход",
+    tk.Label(root, text="стрелки/WASD — стик  •  Z — A  •  X — B  •  "
+                        "пробел — пауза  •  R — рестарт  •  Esc — выход",
              bg=BG, fg=MUTED, font=help_font).pack(pady=(0, 8))
 
     key_axis = {"Left": None, "Right": None, "Up": None, "Down": None,
@@ -93,6 +106,8 @@ def run_gui(rom=None, width=DemoROM.WIDTH, height=DemoROM.HEIGHT,
     for k in list(key_axis) + list(buttons):
         root.bind("<KeyPress-%s>" % k, _on_press)
         root.bind("<KeyRelease-%s>" % k, _on_release)
+    root.bind("<space>", lambda e: rom.toggle_pause())
+    root.bind("<Key-r>", lambda e: rom.reset(new_game=False))
     root.bind("<Escape>", lambda e: root.destroy())
 
     pad = console.input.controller(0)
@@ -169,9 +184,13 @@ def run_gui(rom=None, width=DemoROM.WIDTH, height=DemoROM.HEIGHT,
         rom.draw(console.gpu)
         blit()
         cpu = console.cpu.regs["rax"] if hasattr(console.cpu, "regs") else console.cpu.rax
-        status_var.set("score: %d    кадр: %d    FPS: %.0f    CPU rax: %d    "
-                       "фаза: 1 (MiniX64) — см. ROADMAP.md"
-                       % (rom.score, console.frames, fps_smooth, cpu))
+        mode_label = {"boot": "boot…", "play": "play"}[rom.mode]
+        if rom.paused:
+            mode_label = "PAUSE"
+        status_var.set("score: %d   best: %d   [%s]   кадр: %d   FPS: %.0f   "
+                       "CPU rax: %d"
+                       % (rom.score, rom.best, mode_label, console.frames,
+                          fps_smooth, cpu))
         root.after(interval, tick)
 
     root.after(interval, tick)

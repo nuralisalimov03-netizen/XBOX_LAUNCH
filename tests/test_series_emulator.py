@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Тесты каркаса эмулятора. Запуск из корня репозитория:
 python -m unittest tests.test_series_emulator -v"""
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -15,8 +17,47 @@ from series_emulator.input import InputManager
 from series_emulator.kernel import Kernel
 from series_emulator.cpu import StubCPU, MiniX64, fib_program, ProgramError
 from series_emulator.console import SeriesConsole, boot_demo_console
-from series_emulator.rom_demo import (DemoROM, BG_TOP, PLAYER_COLOR,
-                                      HUD_BACK)
+from series_emulator.rom_demo import (DemoROM, BOOT_FRAMES, BG_TOP,
+                                      PLAYER_COLOR, HUD_BACK)
+from series_emulator.saves import load_save, save, submit_score
+
+
+class SavesTests(unittest.TestCase):
+    def test_roundtrip(self):
+        path = self._tmp()
+        self.assertEqual(load_save(path), {})
+        self.assertTrue(save({"best": 5}, path))
+        self.assertEqual(load_save(path), {"best": 5})
+        os.unlink(path)
+
+    def test_submit_score_only_if_higher(self):
+        path = self._tmp()
+        self.assertTrue(submit_score(3, path))
+        self.assertFalse(submit_score(2, path))
+        self.assertEqual(load_save(path), {"best": 3})
+        self.assertTrue(submit_score(10, path))
+        self.assertEqual(load_save(path), {"best": 10})
+        os.unlink(path)
+
+    def test_submit_keeps_extra_fields(self):
+        path = self._tmp()
+        save({"best": 4, "custom": "x"}, path)
+        self.assertTrue(submit_score(6, path))
+        self.assertEqual(load_save(path)["custom"], "x")
+        os.unlink(path)
+
+    def test_corrupt_save_safe(self):
+        path = self._tmp()
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("{not json")
+        self.assertEqual(load_save(path), {})
+        os.unlink(path)
+
+    @staticmethod
+    def _tmp():
+        fd, path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        return path
 from series_emulator.font3x5 import FONT
 from series_emulator.frontend import _rgb_bytes
 
@@ -168,10 +209,25 @@ class QuadTextTests(unittest.TestCase):
 
 
 class DemoRomTests(unittest.TestCase):
-    def test_movement_uses_stick(self):
-        rom = DemoROM(seed=1)
+    def make_rom(self, seed=1):
+        rom = DemoROM(seed=seed)
         console = SeriesConsole(width=rom.WIDTH, height=rom.HEIGHT)
         console.boot()
+        return rom, console
+
+    def fast_forward(self, rom, console):
+        for _ in range(BOOT_FRAMES + 1):
+            rom.update(0.0, console.input)
+
+    def test_boot_transitions_to_play(self):
+        rom, console = self.make_rom()
+        self.assertEqual(rom.mode, "boot")
+        self.fast_forward(rom, console)
+        self.assertEqual(rom.mode, "play")
+
+    def test_movement_uses_stick(self):
+        rom, console = self.make_rom()
+        self.fast_forward(rom, console)
         pad = console.input.controller(0)
         pad.set_axis("ls_x", 1.0)
         x0 = rom.px
@@ -179,9 +235,8 @@ class DemoRomTests(unittest.TestCase):
         self.assertAlmostEqual(rom.px - x0, rom.SPEED * 0.5)
 
     def test_clamped_to_borders(self):
-        rom = DemoROM(seed=1)
-        console = SeriesConsole(width=rom.WIDTH, height=rom.HEIGHT)
-        console.boot()
+        rom, console = self.make_rom()
+        self.fast_forward(rom, console)
         pad = console.input.controller(0)
         pad.set_axis("ls_x", 1.0)
         for _ in range(10):
@@ -189,18 +244,59 @@ class DemoRomTests(unittest.TestCase):
         self.assertLessEqual(rom.px, rom.WIDTH - rom.PLAYER_SIZE - 1)
 
     def test_collision_increments_score(self):
-        rom = DemoROM(seed=2)
-        console = SeriesConsole(width=rom.WIDTH, height=rom.HEIGHT)
-        console.boot()
+        rom, console = self.make_rom(seed=2)
+        self.fast_forward(rom, console)
         rom.px, rom.py = rom.tx, rom.ty
         rom.update(0.0, console.input)
         self.assertEqual(rom.score, 1)
         self.assertNotEqual((rom.tx, rom.ty), (rom.px, rom.py))
 
+    def test_toggle_pause_blocks_movement(self):
+        rom, console = self.make_rom()
+        self.fast_forward(rom, console)
+        rom.toggle_pause()
+        self.assertTrue(rom.paused)
+        pad = console.input.controller(0)
+        pad.set_axis("ls_x", 1.0)
+        x0 = rom.px
+        y0 = rom.py
+        rom.update(0.5, console.input)
+        self.assertEqual(rom.px, x0)
+        self.assertEqual(rom.py, y0)
+        rom.draw(console.gpu)
+        self.assertEqual(console.gpu.get_pixel(rom.WIDTH // 2,
+                                                rom.HEIGHT // 2 - 5),
+                         HUD_BACK)
+
+    def test_reset_keeps_best(self):
+        rom, console = self.make_rom()
+        self.fast_forward(rom, console)
+        rom.best = 7
+        rom.score = 7
+        rom.reset(new_game=False)
+        self.assertEqual(rom.best, 7)
+        self.assertEqual(rom.score, 0)
+        self.assertFalse(rom.paused)
+        self.assertEqual(rom.mode, "play")
+
+    def test_reset_new_game_replays_boot(self):
+        rom, console = self.make_rom()
+        self.fast_forward(rom, console)
+        rom.reset(new_game=True)
+        self.assertEqual(rom.mode, "boot")
+
+    def test_on_target_caught_fires(self):
+        rom, console = self.make_rom(seed=2)
+        self.fast_forward(rom, console)
+        calls = []
+        rom.on_target_caught = lambda: calls.append(1)
+        rom.px, rom.py = rom.tx, rom.ty
+        rom.update(0.0, console.input)
+        self.assertEqual(len(calls), 1)
+
     def test_draw_renders_into_framebuffer(self):
-        rom = DemoROM(seed=3)
-        console = SeriesConsole(width=rom.WIDTH, height=rom.HEIGHT)
-        console.boot()
+        rom, console = self.make_rom(seed=3)
+        self.fast_forward(rom, console)
         rom.draw(console.gpu)
         self.assertEqual(console.gpu.get_pixel(5, 7), HUD_BACK)
 
