@@ -11,6 +11,7 @@ python3 seriescore.py xvd-info F.xvd   # базовая информация о�
 python3 seriescore.py xvd-info F.xvd --json   # то же в формате JSON
 python3 seriescore.py scan F.xvd       # поиск известных подписей во всём образе
 python3 seriescore.py capabilities  # матрица поддержки Xbox Series X|S
+python3 seriescore.py entropy F.xvd  # карта энтропии: где шифрование, где структура
 python3 seriescore.py selftest      # внутренняя проверка
 ```
 

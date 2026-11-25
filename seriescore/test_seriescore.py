@@ -139,6 +139,65 @@ class CapabilitiesTests(unittest.TestCase):
 
 
 
+class EntropyTests(unittest.TestCase):
+    def test_empty(self):
+        self.assertEqual(seriescore.entropy(b""), 0.0)
+
+    def test_uniform_zero(self):
+        self.assertEqual(seriescore.entropy(b"\x00" * 4096), 0.0)
+
+    def test_one_bit(self):
+        self.assertAlmostEqual(seriescore.entropy(bytes([0, 255] * 512)), 1.0, places=6)
+
+    def test_higher_than_threshold_for_random(self):
+        import os as _os
+
+        h = seriescore.entropy(_os.urandom(65536))
+        self.assertGreater(h, 7.9)
+        self.assertLessEqual(h, 8.0)
+
+
+class EntropyBlocksTests(unittest.TestCase):
+    def write_tmp(self, data):
+        fd, path = tempfile.mkstemp(suffix=".img")
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        self.addCleanup(os.unlink, path)
+        return path
+
+    def test_zero_blocks_are_structural(self):
+        path = self.write_tmp(b"\x00" * 4096)
+        rows, err = seriescore.entropy_blocks(path, block_size=1024, max_blocks=4)
+        self.assertIsNone(err)
+        self.assertTrue(rows)
+        for r in rows:
+            self.assertEqual(r["entropy"], 0.0)
+            self.assertFalse(r["high"])
+
+    def test_perfect_entropy_block_flagged_high(self):
+        path = self.write_tmp(bytes(range(256)) * 8)
+        rows, err = seriescore.entropy_blocks(path, block_size=1024, max_blocks=2)
+        self.assertIsNone(err)
+        self.assertTrue(all(r["high"] for r in rows))
+        self.assertTrue(all(r["entropy"] >= 7.99 for r in rows))
+
+    def test_mixed_file_layout(self):
+        path = self.write_tmp(b"\x00" * 1024 + bytes(range(256)) * 4)
+        rows, err = seriescore.entropy_blocks(path, block_size=1024, max_blocks=2)
+        self.assertIsNone(err)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["offset"], 0)
+        self.assertEqual(rows[1]["offset"], 1024)
+        self.assertFalse(rows[0]["high"])
+        self.assertTrue(rows[1]["high"])
+
+    def test_missing_file(self):
+        rows, err = seriescore.entropy_blocks(os.path.join(HERE, "no_such.img"))
+        self.assertIsNone(rows)
+        self.assertIn("No such file", err)
+
+
+
 class ModuleTableTests(unittest.TestCase):
     def test_all_modules_listed(self):
         names = [name for name, _, _ in seriescore.MODULES]

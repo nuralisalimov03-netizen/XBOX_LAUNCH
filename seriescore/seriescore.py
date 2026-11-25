@@ -2,11 +2,12 @@
 import argparse
 import hashlib
 import json
+import math
 import os
 import sys
 
 PROJECT = "SeriesCore"
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 MODULES = [
     ("containers", "Чтение образов XVD", "в разработке"),
@@ -38,6 +39,8 @@ KNOWN_SIGNATURES = [
     (b"CD001", "ISO9660"),
 ]
 DUMP_WIDTH = 16
+DEFAULT_BLOCK = 1 << 20
+MAX_BLOCKS = 64
 
 
 def xvd_info(path):
@@ -106,6 +109,57 @@ def scan_signatures(path, chunk_size=1 << 20):
     return sorted(set(results)), None
 
 
+def entropy(data):
+    if not data:
+        return 0.0
+    counts = [0] * 256
+    for b in data:
+        counts[b] += 1
+    total = len(data)
+    h = 0.0
+    for c in counts:
+        if c:
+            p = c / total
+            h -= p * math.log2(p)
+    return h
+
+
+def is_high_entropy(h, n, margin=0.05):
+    if n <= 0:
+        return False
+    ceiling = math.log2(256 if n >= 256 else n)
+    ceiling -= 255 / (2 * math.log(2) * n)
+    return h >= ceiling - margin
+
+
+def entropy_blocks(path, block_size=DEFAULT_BLOCK, max_blocks=MAX_BLOCKS):
+    try:
+        size = os.path.getsize(path)
+    except OSError as e:
+        return None, str(e)
+    total_blocks = max(1, (size + block_size - 1) // block_size)
+    step = max(1, total_blocks // max_blocks)
+    rows = []
+    try:
+        with open(path, "rb") as f:
+            for bi in range(0, total_blocks, step):
+                f.seek(bi * block_size)
+                data = f.read(block_size)
+                if not data:
+                    break
+                h = entropy(data)
+                rows.append(
+                    {
+                        "offset": bi * block_size,
+                        "entropy": round(h, 3),
+                        "high": is_high_entropy(h, len(data)),
+                    }
+                )
+    except OSError as e:
+        return None, str(e)
+    return rows, None
+
+
 def cmd_capabilities(_):
     print("Поддержка Xbox Series X|S в %s %s" % (PROJECT, VERSION))
     print()
@@ -113,6 +167,23 @@ def cmd_capabilities(_):
         print("  %-26s %s" % (topic, state))
         print("  %s- %s" % (" " * 26, note))
         print()
+    return 0
+
+
+def cmd_entropy(args):
+    rows, err = entropy_blocks(args.file, block_size=max(1, args.block))
+    if err:
+        print("Ошибка: %s" % err)
+        return 1
+    if not rows:
+        print("Пустой файл")
+        return 0
+    high = sum(1 for r in rows if r["high"])
+    print("Блоков: %d (по %s) | высокая энтропия: %d" % (len(rows), human_size(args.block), high))
+    print()
+    for r in rows:
+        mark = "возможно шифрование/сжатие" if r["high"] else "структурные данные"
+        print("0x%012x  H=%.3f  %s" % (r["offset"], r["entropy"], mark))
     return 0
 
 
@@ -209,6 +280,10 @@ def cmd_selftest(_):
         assert (10, "ISO9660") in hits, hits
         assert (1015, "XDVDFS (файловая система Xbox)") in hits, hits
         assert len(hits) == 2, hits
+
+        assert entropy(b"") == 0.0
+        assert entropy(b"\x00" * 1000) == 0.0
+        assert entropy_blocks(tmp, block_size=512, max_blocks=1)[0][0]["high"] is False
     finally:
         for p in (locals().get("tmp"),):
             if p and os.path.exists(p):
@@ -232,6 +307,16 @@ def main():
     p_scan.add_argument("file")
     sub.add_parser("selftest", help="Внутренняя проверка")
     sub.add_parser("capabilities", help="Матрица поддержки Xbox Series X|S")
+    p_ent = sub.add_parser(
+        "entropy", help="Энтропия по блокам образа: где данные зашифрованы"
+    )
+    p_ent.add_argument("file")
+    p_ent.add_argument(
+        "--block",
+        type=int,
+        default=DEFAULT_BLOCK,
+        help="размер блока в байтах (по умолчанию 1 МБ)",
+    )
     args = parser.parse_args()
 
     if args.command == "status":
@@ -244,6 +329,8 @@ def main():
         return cmd_selftest(args)
     if args.command == "capabilities":
         return cmd_capabilities(args)
+    if args.command == "entropy":
+        return cmd_entropy(args)
     return 2
 
 
