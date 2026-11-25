@@ -6,7 +6,7 @@ import os
 import sys
 
 PROJECT = "SeriesCore"
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 MODULES = [
     ("containers", "Чтение образов XVD", "в разработке"),
@@ -19,6 +19,19 @@ MODULES = [
 ]
 
 XVD_MAGIC = b"XVD"
+SERIES_SUPPORT = [
+    ("CPU (AMD Zen 2)", "полная",
+     "архитектура x86-64 совпадает с ПК — трансляция инструкций не требуется"),
+    ("GPU (AMD RDNA 2)", "частичная",
+     "современные GPU AMD близки по ISA; нужен перенос команд D3D12 Ultimate"),
+    ("Игры Series X|S на ПК", "официальная",
+     "Microsoft Store / приложение Xbox (Xbox Play Anywhere, Game Pass); "
+     "кнопка «Store / Xbox app…» в лаунчере"),
+    ("Образы XVD", "метаданные",
+     "чтение заголовка и поиск подписей; шифрование XTS-AES не обходится"),
+    ("Пиратский контент", "не поддерживается",
+     "обход DRM не входит в проект; только легальный контент"),
+]
 KNOWN_SIGNATURES = [
     (b"XVD", "XVD-контейнер Xbox"),
     (b"MICROSOFT*XBOX*MEDIA", "XDVDFS (файловая система Xbox)"),
@@ -91,6 +104,16 @@ def scan_signatures(path, chunk_size=1 << 20):
     except OSError as e:
         return None, str(e)
     return sorted(set(results)), None
+
+
+def cmd_capabilities(_):
+    print("Поддержка Xbox Series X|S в %s %s" % (PROJECT, VERSION))
+    print()
+    for topic, state, note in SERIES_SUPPORT:
+        print("  %-26s %s" % (topic, state))
+        print("  %s- %s" % (" " * 26, note))
+        print()
+    return 0
 
 
 def cmd_status(_):
@@ -208,6 +231,7 @@ def main():
     p_scan = sub.add_parser("scan", help="Поиск известных подписей во всём образе")
     p_scan.add_argument("file")
     sub.add_parser("selftest", help="Внутренняя проверка")
+    sub.add_parser("capabilities", help="Матрица поддержки Xbox Series X|S")
     args = parser.parse_args()
 
     if args.command == "status":
@@ -218,6 +242,8 @@ def main():
         return cmd_scan(args)
     if args.command == "selftest":
         return cmd_selftest(args)
+    if args.command == "capabilities":
+        return cmd_capabilities(args)
     return 2
 
 

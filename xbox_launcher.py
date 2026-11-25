@@ -193,8 +193,27 @@ class XboxLauncher(tk.Tk):
         self.log.pack(fill="both", expand=True, padx=8, pady=(0, 8))
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        menubar = tk.Menu(self)
+        help_menu = tk.Menu(menubar, tearoff=0)
+        help_menu.add_command(
+            label="Поддержка Xbox Series X|S", command=self._show_series_help
+        )
+        menubar.add_cascade(label="Справка", menu=help_menu)
+        self.configure(menu=menubar)
         self._refresh_emu_path()
         self._auto_detect_emu_path()
+
+    def _show_series_help(self):
+        messagebox.showinfo(
+            "Xbox Series X|S",
+            "Полного эмулятора Xbox Series X|S не существует — ни в этом проекте, "
+            "ни в мире (архитектура закрыта, образы шифруются).\n\n"
+            "Игры этого поколения на ПК работают официально:\n"
+            "Microsoft Store или приложение Xbox (Xbox Play Anywhere, Game Pass).\n\n"
+            "Нажмите «Store / Xbox app…», чтобы увидеть установленные игры "
+            "Series X|S и запустить их в один клик.",
+            parent=self,
+        )
 
     def _emu_label_var(self):
         if not hasattr(self, "_emu_text"):

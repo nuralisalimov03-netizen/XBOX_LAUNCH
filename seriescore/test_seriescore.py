@@ -121,6 +121,24 @@ class ScanTests(unittest.TestCase):
         self.assertIn(((1 << 20) - 10, "XDVDFS (файловая система Xbox)"), hits), hits
 
 
+class CapabilitiesTests(unittest.TestCase):
+    def test_matrix_structure(self):
+        allowed_states = {
+            "полная", "частичная", "официальная", "метаданные", "не поддерживается",
+        }
+        for topic, state, note in seriescore.SERIES_SUPPORT:
+            self.assertTrue(topic)
+            self.assertIn(state, allowed_states)
+            self.assertTrue(note)
+
+    def test_key_rows_present(self):
+        topics = [topic for topic, _, _ in seriescore.SERIES_SUPPORT]
+        self.assertIn("CPU (AMD Zen 2)", topics)
+        self.assertIn("Игры Series X|S на ПК", topics)
+        self.assertIn("Пиратский контент", topics)
+
+
+
 class ModuleTableTests(unittest.TestCase):
     def test_all_modules_listed(self):
         names = [name for name, _, _ in seriescore.MODULES]
