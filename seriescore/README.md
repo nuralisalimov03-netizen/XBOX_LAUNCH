@@ -11,6 +11,9 @@ python3 seriescore.py xvd-info F.xvd   # базовая информация о�
 python3 seriescore.py selftest      # внутренняя проверка
 ```
 
+Тесты: `python -m unittest discover -s seriescore -p "test_*.py" -v`
+CI прогоняет компиляцию и тесты на Python 3.9 / 3.11 / 3.12.
+
 ## Честные вводные
 
 - **CPU консоли — AMD Zen 2 (x86-64)**, тот же набор инструкций, что у ПК. Значит,

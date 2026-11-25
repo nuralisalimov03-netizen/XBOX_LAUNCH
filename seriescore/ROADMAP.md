@@ -4,8 +4,9 @@
 
 - [x] Репозиторий и документация (этот README, ARCHITECTURE.md)
 - [x] CLI-каркас: `status`, `xvd-info`, `selftest`
-- [ ] Юнит-тесты для `xvd-info` (pytest)
-- [ ] Сбор CI на GitHub Actions (линтер + тесты)
+- [x] Юнит-тесты для `xvd-info` (unittest, `test_seriescore.py`)
+- [x] CI на GitHub Actions (компиляция + тесты, Python 3.9/3.11/3.12)
+- [x] Лицензия MIT
 
 ## Фаза 1 — Контейнеры
 

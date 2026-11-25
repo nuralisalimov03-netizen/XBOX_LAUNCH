@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -74,6 +75,111 @@ def guess_emu(game_path):
     return "xenia"
 
 
+def parse_start_apps(raw):
+    apps = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or "|" not in line:
+            continue
+        app_id, _, name = line.partition("|")
+        app_id = app_id.strip().strip('"')
+        name = name.strip()
+        if "!" in app_id:
+            apps.append((name, app_id))
+    return apps
+
+
+def list_store_apps():
+    try:
+        out = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                "Get-StartApps | ForEach-Object { $_.AppID + '|' + $_.Name }",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return parse_start_apps(out)
+
+
+class StoreAppDialog(tk.Toplevel):
+    def __init__(self, master):
+        super().__init__(master)
+        self.title("Игры Microsoft Store / Xbox app (Series X|S on PC)")
+        self.geometry("560x440")
+        self.apps_list = []
+        self.visible = []
+        ttk.Label(self, text="Поиск:").pack(anchor="w", padx=8, pady=(8, 0))
+        self.search_var = tk.StringVar()
+        search = ttk.Entry(self, textvariable=self.search_var)
+        search.pack(fill="x", padx=8, pady=(0, 6))
+        search.bind("<KeyRelease>", lambda e: self._refresh())
+        self.listbox = tk.Listbox(self, font=("Consolas", 9))
+        self.listbox.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        self.listbox.bind("<Double-Button-1>", lambda e: self._launch_selected())
+        bar = ttk.Frame(self)
+        bar.pack(fill="x", padx=8, pady=(0, 8))
+        ttk.Button(bar, text="Запустить выбранную", command=self._launch_selected).pack(
+            side="left"
+        )
+        ttk.Button(bar, text="Обновить список", command=self._load).pack(
+            side="left", padx=6
+        )
+        self.status_var = tk.StringVar(value="Загрузка списка установленных игр…")
+        ttk.Label(self, textvariable=self.status_var, foreground="gray").pack(
+            anchor="w", padx=8, pady=(0, 8)
+        )
+        self._load()
+
+    def _load(self):
+        self.status_var.set("Загрузка списка установленных игр…")
+        threading.Thread(target=self._fetch, daemon=True).start()
+
+    def _fetch(self):
+        apps = list_store_apps()
+        self.after(0, lambda: self._apply(apps))
+
+    def _apply(self, apps):
+        if apps is None:
+            self.status_var.set(
+                "Недоступно: нужен Windows с PowerShell. "
+                "Series X|S-игры устанавливаются через приложение Xbox / Store"
+            )
+            self.apps_list = []
+        elif not apps:
+            self.status_var.set("Store-игры не найдены — установите их через приложение Xbox")
+            self.apps_list = []
+        else:
+            self.status_var.set("Найдено приложений: %d. Двойной клик — запуск" % len(apps))
+            self.apps_list = apps
+        self._refresh()
+
+    def _refresh(self):
+        query = self.search_var.get().lower()
+        self.listbox.delete(0, "end")
+        self.visible = [(name, aid) for name, aid in self.apps_list if query in name.lower()]
+        for name, _ in self.visible:
+            self.listbox.insert("end", name)
+
+    def _launch_selected(self):
+        selection = self.listbox.curselection()
+        if not selection:
+            return
+        name, app_id = self.visible[selection[0]]
+        try:
+            subprocess.Popen(["explorer.exe", "shell:appsFolder\\" + app_id])
+            self.status_var.set("Запуск: %s" % name)
+        except OSError as e:
+            messagebox.showerror("Ошибка", "Не удалось запустить:\n%s" % e, parent=self)
+
+
 class XboxLauncher(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -135,6 +241,9 @@ class XboxLauncher(tk.Tk):
             frame, text="Остановить", command=self.stop, state="disabled"
         )
         self.stop_btn.grid(row=3, column=2, sticky="we", pady=(10, 4))
+        ttk.Button(frame, text="Store / Xbox app…", command=self._open_store).grid(
+            row=3, column=3, sticky="we", pady=(10, 4)
+        )
 
         self.status_var = tk.StringVar(value="Готов к запуску")
         ttk.Label(frame, textvariable=self.status_var, foreground="gray").grid(
@@ -192,6 +301,9 @@ class XboxLauncher(tk.Tk):
                 self.status_var.set(
                     "Определён тип файла — выбран эмулятор: %s" % EMU_LABELS[detected]
                 )
+
+    def _open_store(self):
+        StoreAppDialog(self)
 
     def log_write(self, text):
         self.log.configure(state="normal")
