@@ -12,7 +12,7 @@ python3 seriescore.py selftest      # внутренняя проверка
 ```
 
 Тесты: `python -m unittest discover -s seriescore -p "test_*.py" -v`
-CI прогоняет компиляцию и тесты на Python 3.9 / 3.11 / 3.12.
+CI прогоняет компиляцию и тесты на Python 3.11 / 3.12 / 3.13.
 
 ## Честные вводные
 
