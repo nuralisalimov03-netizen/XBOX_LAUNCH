@@ -144,7 +144,7 @@ def parse_pe_file(path):
 def build_minimal_pe():
     opt_size = 240
     pe_off = 0x80
-    buf = bytearray(0x200)
+    buf = bytearray(0x600)
     buf[0:2] = b"MZ"
     struct.pack_into("<I", buf, 0x3C, pe_off)
     buf[pe_off : pe_off + 4] = b"PE\x00\x00"
@@ -167,7 +167,8 @@ def build_minimal_pe():
     struct.pack_into("<Q", buf, opt + 24, 0x140000000)
     struct.pack_into("<I", buf, opt + 56, 0x2000)
     sec = opt + opt_size
-    buf[sec : sec + 8] = b".text"
+    buf[sec : sec + 8] = b".text".ljust(8, b"\x00")
     struct.pack_into("<IIII", buf, sec + 8, 0x100, 0x1000, 0x200, 0x400)
     struct.pack_into("<I", buf, sec + 36, 0x60000020)
+    buf[0x400:0x404] = b"SCX1"
     return bytes(buf)

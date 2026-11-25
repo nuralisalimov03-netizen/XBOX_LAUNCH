@@ -8,7 +8,7 @@ import os
 import sys
 
 PROJECT = "SeriesCore"
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 
 _here = os.path.dirname(os.path.abspath(__file__))
 _pe_spec = importlib.util.spec_from_file_location(
@@ -16,6 +16,11 @@ _pe_spec = importlib.util.spec_from_file_location(
 )
 pe_parser = importlib.util.module_from_spec(_pe_spec)
 _pe_spec.loader.exec_module(pe_parser)
+_loader_spec = importlib.util.spec_from_file_location(
+    "loader", os.path.join(_here, "loader.py")
+)
+loader = importlib.util.module_from_spec(_loader_spec)
+_loader_spec.loader.exec_module(loader)
 
 MODULES = [
     ("containers", "Чтение образов XVD", "в разработке"),
@@ -218,6 +223,40 @@ def cmd_pe_info(args):
     return 0
 
 
+def cmd_pe_load(args):
+    image, err = loader.load_image_file(args.file)
+    if err:
+        print("Ошибка: %s" % err)
+        return 1
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "base": image["base"],
+                    "size": image["size"],
+                    "entry_va": image["entry_va"],
+                    "sections_mapped": len(image["info"]["sections"]),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
+    print("Образ загружен в память каркаса")
+    print("База: 0x%X, размер: %s" % (image["base"], human_size(image["size"])))
+    print("Точка входа: VA 0x%X" % image["entry_va"])
+    print("Секций размещено: %d" % len(image["info"]["sections"]))
+    try:
+        entry_bytes = loader.read_mem(image, image["entry_va"], 16)
+        sec = loader.section_at(image, image["entry_va"])
+        sec_name = sec["name"] if sec else "?"
+        print("Начало точки входа (%s): %s" % (sec_name, entry_bytes.hex(" ")))
+        print("Entropy секции — см. команду entropy для анализа образа")
+    except loader.MemoryAccessError as e:
+        print("Чтение точки входа: %s" % e)
+    return 0
+
+
 def cmd_status(_):
     print("%s %s — пре-альфа, игры не запускаются" % (PROJECT, VERSION))
     print()
@@ -351,6 +390,11 @@ def main():
     p_pe = sub.add_parser("pe-info", help="Разбор PE-образа (секции, точка входа)")
     p_pe.add_argument("file")
     p_pe.add_argument("--json", action="store_true", help="Вывод в формате JSON")
+    p_load = sub.add_parser(
+        "pe-load", help="Разместить PE-образ в памяти каркаса (начало ядра)"
+    )
+    p_load.add_argument("file")
+    p_load.add_argument("--json", action="store_true", help="Вывод в формате JSON")
     args = parser.parse_args()
 
     if args.command == "status":
@@ -367,6 +411,8 @@ def main():
         return cmd_entropy(args)
     if args.command == "pe-info":
         return cmd_pe_info(args)
+    if args.command == "pe-load":
+        return cmd_pe_load(args)
     return 2
 
 
