@@ -91,6 +91,28 @@ class GPU:
                 drawn += 1
         return drawn
 
+    def draw_gradient(self, top=(20, 20, 20), bottom=(5, 5, 5)):
+        """Вертикальный градиент фона (r,g,b) от верха к низу."""
+        height = max(self.height - 1, 1)
+        for y in range(self.height):
+            t = y / height
+            r = int(top[0] + (bottom[0] - top[0]) * t)
+            g = int(top[1] + (bottom[1] - top[1]) * t)
+            b = int(top[2] + (bottom[2] - top[2]) * t)
+            row = struct.pack("<BBBB", r, g, b, 255) * self.width
+            self.mem.write_bytes(self.framebuffer + y * self.stride, row)
+
+    def draw_frame_rect(self, x, y, w, h, color=(255, 255, 255, 255), thickness=1):
+        """Полый прямоугольник (рамка) толщиной thickness."""
+        drawn = 0
+        for t in range(thickness):
+            drawn += self.draw_rect(x + t, y + t, w - 2 * t, 1, color)
+            drawn += self.draw_rect(x + t, y + h - 1 - t, w - 2 * t, 1, color)
+            if w - 2 * t > 0 and h - 2 * t > 0:
+                drawn += self.draw_rect(x + t, y + 1 + t, 1, h - 2 - 2 * t, color)
+                drawn += self.draw_rect(x + w - 1 - t, y + 1 + t, 1, h - 2 - 2 * t, color)
+        return drawn
+
     def draw_text(self, text, x, y, color=(255, 255, 255, 255), scale=1):
         """Рисует строку шрифтом font3x5. char advance = 4*scale."""
         drawn = 0

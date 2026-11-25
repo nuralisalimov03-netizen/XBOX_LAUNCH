@@ -13,9 +13,10 @@ from series_emulator.gpu import GPU
 from series_emulator.apu import APU
 from series_emulator.input import InputManager
 from series_emulator.kernel import Kernel
-from series_emulator.cpu import StubCPU
+from series_emulator.cpu import StubCPU, MiniX64, fib_program, ProgramError
 from series_emulator.console import SeriesConsole, boot_demo_console
-from series_emulator.rom_demo import DemoROM, BG_COLOR, PLAYER_COLOR
+from series_emulator.rom_demo import (DemoROM, BG_TOP, PLAYER_COLOR,
+                                      HUD_BACK)
 from series_emulator.font3x5 import FONT
 from series_emulator.frontend import _rgb_bytes
 
@@ -201,7 +202,7 @@ class DemoRomTests(unittest.TestCase):
         console = SeriesConsole(width=rom.WIDTH, height=rom.HEIGHT)
         console.boot()
         rom.draw(console.gpu)
-        self.assertEqual(console.gpu.get_pixel(0, 0)[0], BG_COLOR[0])
+        self.assertEqual(console.gpu.get_pixel(5, 7), HUD_BACK)
 
         center = console.gpu.get_pixel(int(rom.px) + rom.PLAYER_SIZE // 2,
                                        int(rom.py) + rom.PLAYER_SIZE // 2)
@@ -217,6 +218,86 @@ class FrontendConversionTests(unittest.TestCase):
         self.assertEqual(len(blob), 11 + 8 * 6 * 3)
         r, g, b = blob[11:14]
         self.assertEqual((r, g, b), (1, 2, 3))
+
+
+class MiniX64Tests(unittest.TestCase):
+    def test_arithmetic(self):
+        cpu = MiniX64()
+        cpu.load([("mov", "rax", 5), ("add", "rax", 3), ("sub", "rax", 1),
+                  ("inc", "rbx"), ("dec", "rbx"), ("hlt",)])
+        steps = cpu.run()
+        self.assertEqual(cpu.regs["rax"], 7)
+        self.assertEqual(cpu.regs["rbx"], 0)
+        self.assertTrue(cpu.halted)
+        self.assertGreater(steps, 4)
+
+    def test_mov_between_regs(self):
+        cpu = MiniX64()
+        cpu.load([("mov", "rax", 9), ("mov", "rdx", "rax"), ("hlt",)])
+        cpu.run()
+        self.assertEqual(cpu.regs["rdx"], 9)
+
+    def test_jumps_and_flags(self):
+        cpu = MiniX64()
+        cpu.load([("mov", "rax", 3), ("cmp", "rax", 3), ("je", 4),
+                  ("mov", "rbx", 1), ("hlt",)])
+        cpu.run()
+        self.assertEqual(cpu.regs["rbx"], 0)
+        self.assertTrue(cpu.flags["zf"])
+
+    def test_negative_flag(self):
+        cpu = MiniX64()
+        cpu.load([("mov", "rax", 2), ("cmp", "rax", 5), ("hlt",)])
+        cpu.run()
+        self.assertFalse(cpu.flags["zf"])
+        self.assertTrue(cpu.flags["sf"])
+
+    def test_fib_10_is_55(self):
+        cpu = MiniX64()
+        cpu.load(fib_program(10))
+        cpu.run()
+        self.assertEqual(cpu.regs["rax"], 55)
+
+    def test_fib_0_and_1(self):
+        cpu = MiniX64()
+        cpu.load(fib_program(0))
+        cpu.run()
+        self.assertEqual(cpu.regs["rax"], 0)
+        cpu2 = MiniX64()
+        cpu2.load(fib_program(1))
+        cpu2.run()
+        self.assertEqual(cpu2.regs["rax"], 1)
+
+    def test_bad_opcode_rejected(self):
+        cpu = MiniX64()
+        with self.assertRaises(ProgramError):
+            cpu.load([("frobnicate", 1)])
+
+    def test_unknown_register_rejected(self):
+        cpu = MiniX64()
+        cpu.load([("mov", "rsp", 1)])
+        with self.assertRaises(ProgramError):
+            cpu.step()
+
+
+class UiHelperTests(unittest.TestCase):
+    def setUp(self):
+        self.gpu = GPU(Memory(size_bytes=64 * 1024 * 1024),
+                       width=32, height=24)
+
+    def test_gradient_vertical(self):
+        self.gpu.draw_gradient((100, 0, 0), (0, 0, 0))
+        self.assertEqual(self.gpu.get_pixel(5, 0)[:3], (100, 0, 0))
+        r, g, b, _ = self.gpu.get_pixel(5, 23)
+        self.assertLess(r, 100)
+        self.assertGreaterEqual(r, 0)
+
+    def test_frame_rect_is_hollow(self):
+        self.gpu.clear(0, 0, 0)
+        self.gpu.draw_frame_rect(2, 2, 10, 6, (255, 255, 255, 255), 1)
+        self.assertEqual(self.gpu.get_pixel(2, 2), (255, 255, 255, 255))
+        self.assertEqual(self.gpu.get_pixel(11, 7), (255, 255, 255, 255))
+        self.assertEqual(self.gpu.get_pixel(5, 5), (0, 0, 0, 255))
 
 
 if __name__ == "__main__":
