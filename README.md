@@ -1,5 +1,27 @@
 # Xbox Launch
 
+Лаунчеры для запуска файлов игр Xbox на компьютере через существующие эмуляторы.
+
+## Xbox Series Launcher (новый дашборд)
+
+Полноэкранный тёмный дашборд в стиле Xbox Series X/S: плитки всех игр из папки,
+недавние сверху, автозапуск нужного эмулятора, часы, статус-бар.
+
+```bat
+cd /d C:\path\to\XBOX_LAUNCH
+launch_series.bat
+```
+
+либо `python xbox_series_launcher.py [--gamesdir "D:/Games/Xbox"] [--selftest]`
+
+- **Настройки → Папка с играми**: укажите папку с `.iso .cci .xex .xbe .gdi .chd` — библиотека найдётся автоматически (включая вложенные папки).
+- **Управление**: клик по плитке запускает игру; стрелки + Enter работают с клавиатуры.
+- Недавние игры поднимаются наверх; путь к эмуляторам можно оставить пустым — лаунчер найдёт `xenia`/`xemu` в PATH.
+- Проверка ядра без GUI: `python xbox_series_launcher.py --selftest`
+- Тесты ядра: `python -m unittest test_launcher_core -v`
+
+## Простой лаунчер (xbox_launcher.py)
+
 Простой лаунчер для запуска файлов игр Xbox на компьютере через существующие эмуляторы.
 
 ## Как это работает
@@ -26,8 +48,8 @@
    - [Xenia](https://xenia.jp/download/) — Xbox 360 (только 64-битная Windows)
    - [xemu](https://xemu.app/) — оригинальный Xbox (Windows / macOS / Linux)
 3. Запустите лаунчер:
-   - Windows: двойной клик по `launch.bat` или `python xbox_launcher.py`
-   - Linux/macOS: `python3 xbox_launcher.py`
+   - Windows: двойной клик по `launch_series.bat` (дашборд) или `launch.bat` (простой)
+   - Linux/macOS: `python3 xbox_series_launcher.py` или `python3 xbox_launcher.py`
 
 Внешние зависимости не нужны — используется стандартная библиотека Python (Tkinter).
 
