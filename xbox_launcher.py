@@ -1,77 +1,195 @@
 #!/usr/bin/env python3
-import json
 import os
-import shutil
 import subprocess
 import sys
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+import threading
 
-CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".xbox_launcher.json")
+from xbox_core import (
+    EMU_ARGS,
+    EMU_HINTS,
+    EMU_LABELS,
+    find_emu_in_path,
+    guess_emu,
+    list_store_apps,
+    load_config,
+    parse_start_apps,
+    save_config as _save_config,
+    scan_library,
+)
+
+try:
+    import tkinter as tk
+    from tkinter import filedialog, messagebox, ttk
+except ImportError as e:
+    print("GUI-режим недоступен: не найден Tkinter. Установите python3-tk.")
+    print("Работает консольный режим: python xbox_launch.py --launch game.iso")
+    print("Подробности: %s" % e)
+    sys.exit(1)
 
 FILE_TYPES = [
     ("Образы и исполняемые файлы Xbox", "*.iso *.cci *.xex *.xbe"),
     ("Все файлы", "*.*"),
 ]
 
-EMU_LABELS = {
-    "xenia": "Xenia (Xbox 360)",
-    "xemu": "xemu (оригинальный Xbox)",
-}
-
-EMU_HINTS = {
-    "xenia": "https://xenia.jp/download/",
-    "xemu": "https://xemu.app/",
-}
-
-EMU_ARGS = {
-    "xenia": [],
-    "xemu": ["-dvd_path"],
-}
-
-
-def load_config():
-    if os.path.exists(CONFIG_PATH):
-        try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, OSError):
-            return {}
-    return {}
-
 
 def save_config(cfg):
-    try:
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, ensure_ascii=False, indent=2)
-    except OSError as e:
-        messagebox.showwarning("Настройки", "Не удалось сохранить настройки:\n%s" % e)
+    err = _save_config(cfg)
+    if err:
+        messagebox.showwarning("Настройки", "Не удалось сохранить настройки:\n%s" % err)
 
 
-def find_emu_in_path(name):
-    for candidate in (name, name + ".exe"):
-        p = shutil.which(candidate)
-        if p:
-            return p
-    return ""
+class StoreAppDialog(tk.Toplevel):
+    def __init__(self, master):
+        super().__init__(master)
+        self.title("Игры Microsoft Store / Xbox app (Series X|S on PC)")
+        self.geometry("560x440")
+        self.apps_list = []
+        self.visible = []
+        ttk.Label(self, text="Поиск:").pack(anchor="w", padx=8, pady=(8, 0))
+        self.search_var = tk.StringVar()
+        search = ttk.Entry(self, textvariable=self.search_var)
+        search.pack(fill="x", padx=8, pady=(0, 6))
+        search.bind("<KeyRelease>", lambda e: self._refresh())
+        self.listbox = tk.Listbox(self, font=("Consolas", 9))
+        self.listbox.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        self.listbox.bind("<Double-Button-1>", lambda e: self._launch_selected())
+        bar = ttk.Frame(self)
+        bar.pack(fill="x", padx=8, pady=(0, 8))
+        ttk.Button(bar, text="Запустить выбранную", command=self._launch_selected).pack(
+            side="left"
+        )
+        ttk.Button(bar, text="Обновить список", command=self._load).pack(
+            side="left", padx=6
+        )
+        self.status_var = tk.StringVar(value="Загрузка списка установленных игр…")
+        ttk.Label(self, textvariable=self.status_var, foreground="gray").pack(
+            anchor="w", padx=8, pady=(0, 8)
+        )
+        self._load()
 
+    def _load(self):
+        self.status_var.set("Загрузка списка установленных игр…")
+        threading.Thread(target=self._fetch, daemon=True).start()
 
-def guess_emu(game_path):
-    ext = os.path.splitext(game_path)[1].lower()
-    if ext in (".xex",):
-        return "xenia"
-    if ext in (".xbe",):
-        return "xemu"
-    if ext in (".iso", ".cci"):
+    def _fetch(self):
+        apps = list_store_apps()
+        self.after(0, lambda: self._apply(apps))
+
+    def _apply(self, apps):
+        if apps is None:
+            self.status_var.set(
+                "Недоступно: нужен Windows с PowerShell. "
+                "Series X|S-игры устанавливаются через приложение Xbox / Store"
+            )
+            self.apps_list = []
+        elif not apps:
+            self.status_var.set("Store-игры не найдены — установите их через приложение Xbox")
+            self.apps_list = []
+        else:
+            self.status_var.set("Найдено приложений: %d. Двойной клик — запуск" % len(apps))
+            self.apps_list = apps
+        self._refresh()
+
+    def _refresh(self):
+        query = self.search_var.get().lower()
+        self.listbox.delete(0, "end")
+        self.visible = [(name, aid) for name, aid in self.apps_list if query in name.lower()]
+        for name, _ in self.visible:
+            self.listbox.insert("end", name)
+
+    def _launch_selected(self):
+        selection = self.listbox.curselection()
+        if not selection:
+            return
+        name, app_id = self.visible[selection[0]]
         try:
-            with open(game_path, "rb") as f:
-                header = f.read(0x20000)
-        except OSError:
-            return "xenia"
-        if b"MICROSOFT*XBOX*MEDIA" in header or b"MICROSOFT\\XBOX\\MEDIA" in header:
-            return "xemu"
-        return "xenia"
-    return "xenia"
+            subprocess.Popen(["explorer.exe", "shell:appsFolder\\" + app_id])
+            self.status_var.set("Запуск: %s" % name)
+        except OSError as e:
+            messagebox.showerror("Ошибка", "Не удалось запустить:\n%s" % e, parent=self)
+
+
+class LibraryDialog(tk.Toplevel):
+    def __init__(self, master):
+        super().__init__(master)
+        self.title("Библиотека игр Xbox")
+        self.geometry("640x440")
+        self.games = []
+        self.visible = []
+        bar = ttk.Frame(self)
+        bar.pack(fill="x", padx=8, pady=8)
+        ttk.Button(bar, text="Сканировать папку…", command=self._pick_folder).pack(
+            side="left"
+        )
+        self.search_var = tk.StringVar()
+        search = ttk.Entry(bar, textvariable=self.search_var)
+        search.pack(side="left", fill="x", expand=True, padx=(6, 0))
+        search.bind("<KeyRelease>", lambda e: self._refresh())
+        self.listbox = tk.Listbox(self, font=("Consolas", 9))
+        self.listbox.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        self.listbox.bind("<Double-Button-1>", lambda e: self._launch_selected())
+        bottom = ttk.Frame(self)
+        bottom.pack(fill="x", padx=8, pady=(0, 8))
+        ttk.Button(
+            bottom, text="Запустить выбранную", command=self._launch_selected
+        ).pack(side="left")
+        self.status_var = tk.StringVar(value="Библиотека пуста")
+        ttk.Label(self, textvariable=self.status_var, foreground="gray").pack(
+            anchor="w", padx=8, pady=(0, 8)
+        )
+        roots = master.config_data.get("library_roots", [])
+        if roots:
+            self._scan(list(roots))
+
+    def _pick_folder(self):
+        folder = filedialog.askdirectory(title="Папка с играми Xbox")
+        if not folder:
+            return
+        roots = set(self.master.config_data.get("library_roots", []))
+        roots.add(folder)
+        self.master.config_data["library_roots"] = sorted(roots)
+        save_config(self.master.config_data)
+        self._scan(sorted(roots))
+
+    def _scan(self, roots):
+        self.status_var.set("Сканирование…")
+        threading.Thread(
+            target=lambda: self.after(0, lambda: self._apply(scan_library(roots))),
+            daemon=True,
+        ).start()
+
+    def _apply(self, games):
+        self.games = games
+        self.master.config_data["library"] = games
+        save_config(self.master.config_data)
+        self.status_var.set(
+            "Игр найдено: %d. Двойной клик — запуск" % len(games)
+        )
+        self._refresh()
+
+    def _refresh(self):
+        query = self.search_var.get().lower()
+        self.listbox.delete(0, "end")
+        self.visible = [
+            p for p in self.games if query in os.path.basename(p).lower()
+        ]
+        for p in self.visible:
+            self.listbox.insert(
+                "end", "%s  —  %s" % (os.path.basename(p), os.path.dirname(p))
+            )
+
+    def _launch_selected(self):
+        selection = self.listbox.curselection()
+        if not selection:
+            return
+        path = self.visible[selection[0]]
+        self.master.game_var.set(path)
+        emu = guess_emu(path)
+        if emu != self.master.emu_var.get():
+            self.master.emu_var.set(emu)
+            self.master._refresh_emu_path()
+        self.master.launch()
+        self.status_var.set("Запуск: %s" % os.path.basename(path))
 
 
 class XboxLauncher(tk.Tk):
@@ -124,29 +242,65 @@ class XboxLauncher(tk.Tk):
             row=2, column=3, padx=(4, 0)
         )
 
+        self.recent = self.config_data.get("recent_games", [])
+        ttk.Label(frame, text="Недавние:").grid(row=3, column=0, sticky="w")
+        self.recent_box = ttk.Combobox(
+            frame, values=self.recent, state="readonly", width=40
+        )
+        self.recent_box.grid(row=3, column=1, columnspan=2, sticky="we")
+        self.recent_box.bind(
+            "<<ComboboxSelected>>",
+            lambda e: self.game_var.set(self.recent_box.get()),
+        )
+        ttk.Button(frame, text="Библиотека…", command=self._open_library).grid(
+            row=3, column=3, padx=(4, 0)
+        )
+
         frame.columnconfigure(1, weight=1)
         frame.columnconfigure(2, weight=1)
 
         self.launch_btn = ttk.Button(
             frame, text="Запустить игру", command=self.launch
         )
-        self.launch_btn.grid(row=3, column=1, sticky="we", pady=(10, 4))
+        self.launch_btn.grid(row=4, column=1, sticky="we", pady=(10, 4))
         self.stop_btn = ttk.Button(
             frame, text="Остановить", command=self.stop, state="disabled"
         )
-        self.stop_btn.grid(row=3, column=2, sticky="we", pady=(10, 4))
+        self.stop_btn.grid(row=4, column=2, sticky="we", pady=(10, 4))
+        ttk.Button(frame, text="Store / Xbox app…", command=self._open_store).grid(
+            row=4, column=3, sticky="we", pady=(10, 4)
+        )
 
         self.status_var = tk.StringVar(value="Готов к запуску")
         ttk.Label(frame, textvariable=self.status_var, foreground="gray").grid(
-            row=4, column=0, columnspan=4, sticky="w"
+            row=5, column=0, columnspan=4, sticky="w"
         )
 
         self.log = tk.Text(self, height=10, state="disabled", font=("Consolas", 9))
         self.log.pack(fill="both", expand=True, padx=8, pady=(0, 8))
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        menubar = tk.Menu(self)
+        help_menu = tk.Menu(menubar, tearoff=0)
+        help_menu.add_command(
+            label="Поддержка Xbox Series X|S", command=self._show_series_help
+        )
+        menubar.add_cascade(label="Справка", menu=help_menu)
+        self.configure(menu=menubar)
         self._refresh_emu_path()
         self._auto_detect_emu_path()
+
+    def _show_series_help(self):
+        messagebox.showinfo(
+            "Xbox Series X|S",
+            "Полного эмулятора Xbox Series X|S не существует — ни в этом проекте, "
+            "ни в мире (архитектура закрыта, образы шифруются).\n\n"
+            "Игры этого поколения на ПК работают официально:\n"
+            "Microsoft Store или приложение Xbox (Xbox Play Anywhere, Game Pass).\n\n"
+            "Нажмите «Store / Xbox app…», чтобы увидеть установленные игры "
+            "Series X|S и запустить их в один клик.",
+            parent=self,
+        )
 
     def _emu_label_var(self):
         if not hasattr(self, "_emu_text"):
@@ -193,11 +347,25 @@ class XboxLauncher(tk.Tk):
                     "Определён тип файла — выбран эмулятор: %s" % EMU_LABELS[detected]
                 )
 
+    def _open_store(self):
+        StoreAppDialog(self)
+
+    def _open_library(self):
+        LibraryDialog(self)
+
     def log_write(self, text):
         self.log.configure(state="normal")
         self.log.insert("end", text)
         self.log.see("end")
         self.log.configure(state="disabled")
+
+    def _remember_recent(self, game_path):
+        if game_path in self.recent:
+            self.recent.remove(game_path)
+        self.recent.insert(0, game_path)
+        self.recent = self.recent[:8]
+        self.config_data["recent_games"] = list(self.recent)
+        self.recent_box.configure(values=self.recent)
 
     def launch(self):
         emu_path = self.emu_path_var.get().strip()
@@ -221,6 +389,7 @@ class XboxLauncher(tk.Tk):
             args.append(game_path)
 
         self.config_data["last_game"] = game_path
+        self._remember_recent(game_path)
         self.config_data["emu"] = emu
         self.config_data.setdefault("emu_paths", {})[emu] = emu_path
         save_config(self.config_data)
