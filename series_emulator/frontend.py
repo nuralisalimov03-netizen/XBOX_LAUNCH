@@ -109,12 +109,45 @@ def run_gui(rom=None, width=DemoROM.WIDTH, height=DemoROM.HEIGHT,
 
     img_holder = {"img": None}
 
+    def _photo_rowput():
+        img = tk.PhotoImage(width=width, height=height)
+        stride = console.gpu.stride
+        for y in range(height):
+            row = console.gpu.mem.read_bytes(
+                console.gpu.framebuffer + y * stride, stride)
+            cells = " ".join(
+                "#%02x%02x%02x" % (row[x * 4], row[x * 4 + 1], row[x * 4 + 2])
+                for x in range(width))
+            img.put("{%s}" % cells, to=(0, y))
+        return img
+
+    def _make_photo():
+        ppm = _rgb_bytes(console.gpu)
+        for data in (ppm,
+                     base64.b64encode(ppm).decode("ascii"),
+                     None):
+            try:
+                if data is None:
+                    return _photo_rowput()
+                img = tk.PhotoImage(data=data, format="ppm",
+                                    width=width, height=height)
+                if img.width() != width or img.height() != height:
+                    raise tk.TclError("PPM не декодировался")
+                return img
+            except tk.TclError:
+                continue
+        raise tk.TclError("Ни один способ blit не сработал")
+
     def blit():
-        data = base64.b64encode(_rgb_bytes(console.gpu))
-        img = tk.PhotoImage(data=data, format="ppm",
-                            width=width, height=height)
+        img = _make_photo()
         if scale > 1:
-            img = img.zoom(scale)
+            try:
+                img = img.zoom(scale)
+            except tk.TclError:
+                img_holder["img"] = img
+                canvas.delete("all")
+                canvas.create_image(0, 0, image=img, anchor="nw")
+                return
         img_holder["img"] = img
         canvas.delete("all")
         canvas.create_image(0, 0, image=img, anchor="nw")
